@@ -1,0 +1,38 @@
+# in-progress for moving hours back to ocflib from ocfweb
+
+hours:
+  Monday:
+    - "09:00-14:00"
+    - "14:30-17:00"
+  Tuesday:
+    - "09:00-20:00"
+  Wednesday:
+    - "09:00-20:00"
+  Thursday:
+    - "09:00-20:00"
+  Friday:
+    - "09:00-18:00"
+  Saturday:
+    - "09:00-20:00"
+  Sunday:
+    - "09:00-20:00"
+
+holidays:
+  - reason: "Early Lab Closure"
+    start: 2018-02-01
+    end: 2018-02-01
+    hours:
+      - "09:00-19:00"
+  - reason: "Early Lab Closure"
+    start: 2018-02-04
+    end: 2018-02-04
+    hours:
+      - "09:00-15:00"
+  - reason: "President's Day"
+    start: 2018-02-19
+    end: 2018-02-19
+    hours:
+  - reason: "Spring Break"
+    start: 2018-03-24
+    end: 2018-04-01
+    hours:

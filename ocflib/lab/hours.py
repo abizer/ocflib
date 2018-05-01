@@ -18,55 +18,81 @@ from datetime import date
 from datetime import datetime
 from datetime import time
 from datetime import timedelta
+from enum import Enum
 
-import requests
+import pkg_resources
+import yaml
 
-HOURS_URL = 'https://www.ocf.berkeley.edu/~staff/hours_temp'
+HOURS_FILE = pkg_resources.resource_string(__name__, 'hours.yaml')
 
+
+class Days(Enum):
+    Monday = 1
+    Tuesday = 2
+    Wednesday = 3
+    Thursday = 4
+    Friday = 5
+    Saturday = 6
+    Sunday = 7
 
 def _generate_regular_hours():
-    """pull hours from ocfweb and return them in the manner expected by Day().
+    """Load hours from a yaml file and return them in the manner expected by Day().
 
-    The canonical source of OCF lab hours is a Google Spreadsheet. Parsing
-    that sheet is handled by the ocfweb API. This function is a shim for code
-    that expects hours to come from ocflib, where they were originally
-    hardcoded.
+    The canonical source of OCF lab hours is a hours.yaml in this directory.
 
     >>> _generate_regular_hours()
     {
-        Day.MONDAY: [Hour(time(11, 10), time(13), 'staff1'),
-                     Hour(time(14, 10), time(18), 'staff2'),
+        Days.Monday: [Hour(time(11, 10), time(13)),
+                     Hour(time(14, 10), time(18)),
                      ...],
-        Day.TUESDAY: ...
+        Days.Tuesday: ...
         ...
     }
     """
 
+    raw_hours = yaml.safe_load(HOURS_FILE)
+
     regular_hours = {}
+    holidays = []
 
-    for day, hours in requests.get(HOURS_URL).json().items():
-        regular_hours[int(day)] = [
-            Hour(
-                open=_parsetime(hour[0]),
-                close=_parsetime(hour[1]),
-                staffer=hour[2],
+    for day, hours in raw_hours['hours'].items():
+        i_hours = []
+        for hour in hours:
+            x = hour.split('-')
+            i_hours.append(
+                Hour(
+                    open=_parsetime(x[0]),
+                    close=_parsetime(x[1])
+                )
             )
-            for hour in hours
-        ]
 
-    return regular_hours
+        regular_hours[Days[day]] = i_hours
+
+    for data in raw_hours['holidays']:
+        i_hours = []
+        if data['hours']:
+            for hour in data['hours']:
+                x = hour.split('-')
+                i_hours.append(
+                    Hour(
+                        open=_parsetime(x[0]),
+                        close=_parsetime(x[1])
+                    )
+                )
+
+        holidays.append((data['start'], data['end'], data['reason'], i_hours))
+
+    return regular_hours, holidays
 
 
 def _parsetime(t):
-    return datetime.strptime(t, '%H:%M:%S').time()
+    return datetime.strptime(t, '%H:%M').time()
 
 
 class Hour:
-
-    def __init__(self, open, close, staffer=None):
+    def __init__(self, open, close):
         self.open = open
         self.close = close
-        self.staffer = staffer
 
     def __contains__(self, when):
         if isinstance(when, datetime):
@@ -75,8 +101,7 @@ class Hour:
 
     def __eq__(self, other):
         return self.open == other.open and \
-            self.close == other.close and \
-            self.staffer == other.staffer
+            self.close == other.close
 
 
 class Day(namedtuple('Day', ['date', 'weekday', 'holiday', 'hours'])):
@@ -101,11 +126,13 @@ class Day(namedtuple('Day', ['date', 'weekday', 'holiday', 'hours'])):
         if isinstance(when, datetime):
             when = when.date()
 
+        hours, holidays = _generate_regular_hours()
+
         # check if it's a holiday
         my_holiday = None
-        my_hours = _generate_regular_hours()[when.weekday()]
+        my_hours = hours[Days(when.weekday())]
 
-        for start, end, name, hours in HOLIDAYS:
+        for start, end, name, hours in holidays:
             if start <= when <= end:
                 my_holiday = name
                 my_hours = hours
