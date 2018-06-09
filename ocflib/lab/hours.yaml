@@ -36,3 +36,23 @@ holidays:
     start: 2018-03-24
     end: 2018-04-01
     hours:
+  - reason: "Summer Break"
+    start: 2018-05-12
+    end: 2018-08-14
+    hours:
+  - reason: "Labor Day"
+    start: 2018-09-03
+    end: 2018-09-03
+    hours:
+  - reason: "Veteran's Day"
+    start: 2018-11-12
+    end: 2018-11-12
+    hours:
+  - reason: "Thanksgiving Break"
+    start: 2018-11-21
+    end: 2018-11-25
+    hours:
+  - reason: "Winter Break"
+    start: 2018-12-15
+    end: 2019-01-14
+    hours:

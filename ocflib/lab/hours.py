@@ -4,9 +4,9 @@ All times are assumed to be OST (OCF Standard Time).
 
 Usage:
 
-    >>> from ocflib.lab.hours import Day
-    >>> Day.from_date(date(2015, 10, 12))
-    Day(
+    >>> from ocflib.lab.hours import Hours
+    >>> Hours.get_hours(date(2015, 10, 12))
+    Hours(
         date=datetime.date(2015, 10, 12),
         weekday='Monday',
         holiday=None,
@@ -16,7 +16,6 @@ Usage:
 from collections import namedtuple
 from datetime import date
 from datetime import datetime
-from datetime import time
 from datetime import timedelta
 from enum import Enum
 
@@ -27,18 +26,18 @@ HOURS_FILE = pkg_resources.resource_string(__name__, 'hours.yaml')
 
 
 class Days(Enum):
-    Monday = 1
-    Tuesday = 2
-    Wednesday = 3
-    Thursday = 4
-    Friday = 5
-    Saturday = 6
-    Sunday = 7
+    Monday = 0
+    Tuesday = 1
+    Wednesday = 2
+    Thursday = 3
+    Friday = 4
+    Saturday = 5
+    Sunday = 6
 
 def _generate_regular_hours():
     """Load hours from a yaml file and return them in the manner expected by Day().
 
-    The canonical source of OCF lab hours is a hours.yaml in this directory.
+    The canonical source of OCF lab hours is hours.yaml in this directory.
 
     >>> _generate_regular_hours()
     {
@@ -54,6 +53,9 @@ def _generate_regular_hours():
 
     regular_hours = {}
     holidays = []
+
+    def _parsetime(t):
+        return datetime.strptime(t, '%H:%M').time()
 
     for day, hours in raw_hours['hours'].items():
         i_hours = []
@@ -85,10 +87,6 @@ def _generate_regular_hours():
     return regular_hours, holidays
 
 
-def _parsetime(t):
-    return datetime.strptime(t, '%H:%M').time()
-
-
 class Hour:
     def __init__(self, open, close):
         self.open = open
@@ -103,61 +101,53 @@ class Hour:
         return self.open == other.open and \
             self.close == other.close
 
+    def __repr__(self):
+        return '{}-{}'.format(self.open, self.close)
 
-class Day(namedtuple('Day', ['date', 'weekday', 'holiday', 'hours'])):
 
-    MONDAY = 0
-    TUESDAY = 1
-    WEDNESDAY = 2
-    THURSDAY = 3
-    FRIDAY = 4
-    SATURDAY = 5
-    SUNDAY = 6
+class Hours(namedtuple('Hours', ['date', 'weekday', 'holiday', 'hours'])):
 
     @classmethod
-    def from_date(cls, when=None):
-        """Return whether a Day representing the given day.
+    def get_hours(cls, day=None):
+        """Return Hours representing the given day.
 
         If not provided, when defaults to today.
         """
-        if not when:
-            when = date.today()
+        if not day:
+            day = date.today()
 
-        if isinstance(when, datetime):
-            when = when.date()
+        if isinstance(day, datetime):
+            day = day.date()
 
         hours, holidays = _generate_regular_hours()
 
         # check if it's a holiday
         my_holiday = None
-        my_hours = hours[Days(when.weekday())]
+        my_hours = hours[Days(day.weekday())]
 
         for start, end, name, hours in holidays:
-            if start <= when <= end:
+            if start <= day <= end:
                 my_holiday = name
                 my_hours = hours
                 break
 
         return cls(
-            date=when,
-            weekday=when.strftime('%A'),
+            date=day,
+            weekday=day.strftime('%A'),
             holiday=my_holiday,
             hours=my_hours,
         )
 
-    def is_open(self, when=None):
+    @classmethod
+    def today(cls):
+        return cls.get_hours()
+
+    def lab_is_open(self, when=None):
         """Return whether the lab is open at the given time.
 
         If not provided, when defaults to now.
         """
-        if not when:
-            when = datetime.now()
-
-        if not isinstance(when, datetime):
-            raise ValueError('{} must be a datetime instance'.format(when))
-
-        if self.date != when.date():
-            raise ValueError('{} is on a different day than {}'.format(when, self))
+        when = self._validate_time(when)
 
         return any(when in hour for hour in self.hours)
 
@@ -165,22 +155,17 @@ class Day(namedtuple('Day', ['date', 'weekday', 'holiday', 'hours'])):
         """Return timedelta object representing time until the lab is open from the given time.
 
         If not provided, defaults to now"""
-        if not when:
-            when = datetime.now()
+        when = self._validate_time(when)
 
-        if not isinstance(when, datetime):
-            raise ValueError('{} must be a datetime instance'.format(when))
-
-        if self.date != when.date():
-            raise ValueError('{} is on a different day than {}'.format(when, self))
-
-        if self.is_open(when=when):
+        if self.lab_is_open(when=when):
             return timedelta()
 
         def date_opens(date):
-            return [datetime.combine(date, h.open) for h in Day.from_date(date).hours]
+            return [datetime.combine(date, h.open) for h in Hours.get_hours(date).hours]
+
         opens = date_opens(self.date)
-        # because we assume when is in the current day, any hours in future dates don't need to be filtered
+        # because we assume `when` is in the current day, any hours in future
+        # dates don't need to be filtered
         opens = [o for o in opens if o > when]
         date = self.date
         while not opens:
@@ -193,14 +178,7 @@ class Day(namedtuple('Day', ['date', 'weekday', 'holiday', 'hours'])):
         """Return timedelta object representing time until the lab is closed from the given time.
 
         If not provided, defaults to now"""
-        if not when:
-            when = datetime.now()
-
-        if not isinstance(when, datetime):
-            raise ValueError('{} must be a datetime instance'.format(when))
-
-        if self.date != when.date():
-            raise ValueError('{} is on a different day than {}'.format(when, self))
+        when = self._validate_time(when)
 
         # because hour intervals should not overlap this should be length 0 or 1
         hours = [hour for hour in self.hours if when in hour]
@@ -208,21 +186,16 @@ class Day(namedtuple('Day', ['date', 'weekday', 'holiday', 'hours'])):
             return timedelta()
         return datetime.combine(self.date, hours[0].close) - when
 
+    def _validate_time(self, when):
+        if not when:
+            return datetime.now()
+
+        if not isinstance(when, datetime):
+            raise ValueError('{} must be an instance of datetime'.format(when))
+
+        if not self.date != when.date():
+            raise ValueError('{} is on a different day than {}'.format(when, self))
+
     @property
     def closed_all_day(self):
         return not self.hours
-
-
-HOLIDAYS = [
-    # start date, end date, holiday name, list of hours (date ranges are inclusive)
-    (date(2018, 2, 1), date(2018, 2, 1), 'Early Lab Closure', [Hour(time(9), time(19))]),
-    (date(2018, 2, 4), date(2018, 2, 4), 'Early Lab Closure', [Hour(time(9), time(15))]),
-    (date(2018, 2, 19), date(2018, 2, 19), 'Presidents\' Day', []),
-    (date(2018, 3, 3), date(2018, 3, 3), 'Early Lab Closure', [Hour(time(9), time(12))]),
-    (date(2018, 3, 24), date(2018, 4, 1), 'Spring Break', []),
-    (date(2018, 5, 12), date(2018, 8, 14), 'Summer Break', []),
-    (date(2018, 9, 3), date(2018, 9, 3), 'Labor Day', []),
-    (date(2018, 11, 12), date(2018, 11, 12), 'Veterans Day', []),
-    (date(2018, 11, 21), date(2018, 11, 25), 'Thanksgiving Break', []),
-    (date(2018, 12, 15), date(2019, 1, 14), 'Winter Break', []),
-]
